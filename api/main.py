@@ -45,12 +45,12 @@ CATEGORICAL_COLS = ["category", "gender", "state", "merchant"]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load heavy resources once when the server boots."""
+    """Load heavy resources once when the server boots.
+    GuardAgent (MLX) is skipped at startup to avoid Metal crash when GPU unavailable.
+    """
     global _model, _encoders, _agent, _rag_engine
 
     import joblib
-    from models.guard_agent_local import LocalGuardAgent
-    from models.rag_engine_local import RAGEngineLocal
 
     model_path = PROJECT_ROOT / "models" / "fraud_model_rf.joblib"
     enc_path = PROJECT_ROOT / "models" / "encoders.joblib"
@@ -65,14 +65,19 @@ async def lifespan(app: FastAPI):
     else:
         print("⚠️  ML model files not found — prediction endpoint will be unavailable.")
 
-    # 2. GuardAgent (includes LocalLLM)
-    _agent = LocalGuardAgent()
-    print("✅ GuardAgent loaded.")
+    # 2. RAG Engine (no MLX — safe to load)
+    try:
+        from models.rag_engine_local import RAGEngineLocal
+        _rag_engine = RAGEngineLocal()
+        _rag_engine.index_data()
+        print("✅ RAG Engine loaded and indexed.")
+    except Exception as e:
+        print(f"⚠️  RAG Engine failed to load: {e}")
+        _rag_engine = None
 
-    # 3. RAG Engine
-    _rag_engine = RAGEngineLocal()
-    _rag_engine.index_data()
-    print("✅ RAG Engine loaded and indexed.")
+    # 3. GuardAgent uses MLX — skip at startup to avoid Metal crash
+    _agent = None
+    print("ℹ️  GuardAgent skipped at startup (requires Apple Silicon for /api/agent/investigate).")
 
     print("🟢 Veriscan API is ready.")
     yield  # App is running
@@ -156,7 +161,7 @@ async def predict_fraud(txn: TransactionInput):
 @app.get("/api/fraud/high-risk", response_model=HighRiskTransactionsResponse, tags=["Fraud ML"])
 async def get_high_risk_transactions(limit: int = Query(default=10, ge=1, le=100)):
     """Get the top N highest-risk transactions across the system."""
-    from models.guard_agent_local import tool_get_high_risk_transactions
+    from models.agent_tools_data import tool_get_high_risk_transactions
 
     results = tool_get_high_risk_transactions(limit=limit)
     return HighRiskTransactionsResponse(count=len(results), transactions=results)
@@ -168,7 +173,7 @@ async def get_high_risk_transactions(limit: int = Query(default=10, ge=1, le=100
 @app.get("/api/user/{user_id}/risk", response_model=UserRiskResponse, tags=["User Intelligence"])
 async def get_user_risk(user_id: str):
     """Retrieve the risk profile for a specific user."""
-    from models.guard_agent_local import tool_get_user_risk_profile
+    from models.agent_tools_data import tool_get_user_risk_profile
 
     result = tool_get_user_risk_profile(user_id)
     return UserRiskResponse(**result)
