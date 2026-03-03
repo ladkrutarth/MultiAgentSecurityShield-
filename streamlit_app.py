@@ -388,8 +388,8 @@ def render_prediction_tab(df, model, encoders):
     
     # Efficient Filtering via Batch Inference
     if risk_filter != "Show All":
-        with st.spinner(f"Scanning up to 100,000 records for {risk_filter} risk cases..."):
-            subset = df.head(100000) # Increased limit for better coverage
+        with st.spinner(f"Scanning sample for {risk_filter} risk cases..."):
+            subset = df.head(5000) # Use top 5000 for consistent responsiveness
             features = ["category", "amt", "gender", "state", "merchant", "hour", "day_of_week"]
             X = subset[features].copy()
             for c in ["category", "gender", "state", "merchant"]:
@@ -400,14 +400,13 @@ def render_prediction_tab(df, model, encoders):
             display_df = subset[subset['predicted_risk'] == risk_filter]
             
             if display_df.empty:
-                st.warning(f"No {risk_filter} risk transactions found in the scanned 100,000 batch. Try another level.")
+                st.warning(f"No {risk_filter} risk transactions found in the scanned batch. Try another level.")
                 return
     else:
         display_df = df
 
-    total_scanned = len(df.head(100000)) if risk_filter != "Show All" else len(df)
     total_found = len(display_df)
-    st.info(f"Showing **{total_found:,}** {risk_filter} risk transactions (Scanned: {total_scanned:,} / Total Pool: {len(df):,})")
+    st.info(f"Showing {total_found:,} transactions matching criteria.")
     
     idx = st.slider("Select Transaction from Pool", 0, max(0, total_found-1), 0)
     row = display_df.iloc[idx]
