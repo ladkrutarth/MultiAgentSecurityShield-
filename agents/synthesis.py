@@ -62,7 +62,7 @@ Current Question: {query}
 Professional Report:"""
 
         trace.append("Generating LLM synthesis report...")
-        answer = self.llm.generate(prompt, max_tokens=350)
+        answer = self.llm.generate(prompt, max_tokens=1024)
         answer = re.sub(r'<\|.*?\|>', '', answer).strip()
         
         # Save to memory

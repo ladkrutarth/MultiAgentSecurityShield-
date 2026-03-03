@@ -5,6 +5,13 @@ Decoupled REST API for Fraud Prediction, GuardAgent, and RAG Engine.
 Run with: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 """
 
+import os
+# ---------------------------------------------------------------------------
+# System Stability Guards (Fixes SIGABRT on macOS Sequoia)
+# ---------------------------------------------------------------------------
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+
 import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -28,6 +35,8 @@ from api.schemas import (
     RAGQueryRequest,
     RAGQueryResponse,
     RAGResult,
+    LLMGenerationRequest,
+    LLMGenerationResponse,
     HealthResponse,
 )
 
@@ -75,9 +84,15 @@ async def lifespan(app: FastAPI):
         print(f"⚠️  RAG Engine failed to load: {e}")
         _rag_engine = None
 
-    # 3. GuardAgent uses MLX — skip at startup to avoid Metal crash
-    _agent = None
-    print("ℹ️  GuardAgent skipped at startup (requires Apple Silicon for /api/agent/investigate).")
+    # 3. GuardAgent (uses MLX — try to load on Apple Silicon; skip if Metal unavailable)
+    try:
+        from models.guard_agent_local import LocalGuardAgent
+        _agent = LocalGuardAgent()
+        print("✅ GuardAgent loaded.")
+    except Exception as e:
+        _agent = None
+        print(f"ℹ️  GuardAgent not loaded: {e}")
+        print("   Use /api/rag/query for knowledge search, or run on Apple Silicon for full agent.")
 
     print("🟢 Veriscan API is ready.")
     yield  # App is running
@@ -186,7 +201,13 @@ async def get_user_risk(user_id: str):
 async def agent_investigate(req: AgentInvestigationRequest):
     """Run a full GuardAgent agentic investigation."""
     if not _agent:
-        raise HTTPException(status_code=503, detail="GuardAgent not loaded.")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "GuardAgent not loaded. It requires Apple Silicon (M1/M2/M3) and MLX. "
+                "Use the RAG Knowledge Search tab for semantic search, or run the API on a Mac with Apple Silicon to enable agent investigations."
+            ),
+        )
 
     raw = _agent.analyze(req.query, session_id=req.session_id)
 
@@ -231,3 +252,20 @@ async def rag_query(req: RAGQueryRequest):
     ]
 
     return RAGQueryResponse(query=req.query, count=len(parsed), results=parsed)
+
+
+# ---------------------------------------------------------------------------
+# 7. Simple LLM Generation
+# ---------------------------------------------------------------------------
+@app.post("/api/llm/generate", response_model=LLMGenerationResponse, tags=["AI Core"])
+async def generate_text(req: LLMGenerationRequest):
+    """Perform raw text generation using the local MLX LLM."""
+    if not _agent:
+        raise HTTPException(status_code=503, detail="Local LLM / GuardAgent not loaded.")
+
+    # Access the underlying LocalLLM from the agent
+    try:
+        response = _agent.llm.generate(req.prompt, max_tokens=req.max_tokens, temp=req.temp)
+        return LLMGenerationResponse(prompt=req.prompt, response=response)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Generation failed: {e}")

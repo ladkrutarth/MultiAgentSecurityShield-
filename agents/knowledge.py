@@ -33,7 +33,7 @@ Write a professional, detailed analysis. Include:
 
 Analysis:"""
 
-        answer = self.llm.generate(prompt, max_tokens=300)
+        answer = self.llm.generate(prompt, max_tokens=800)
         answer = re.sub(r'<\|.*?\|>', '', answer).strip()
         for artifact in ["assistant", "user", "Question:", "Context:", "Evidence:", "Analysis:"]:
             answer = answer.replace(artifact, "")

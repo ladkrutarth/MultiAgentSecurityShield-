@@ -112,6 +112,23 @@ class RAGQueryResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Simple LLM Generation
+# ---------------------------------------------------------------------------
+
+class LLMGenerationRequest(BaseModel):
+    """Request for raw LLM text generation."""
+    prompt: str = Field(..., example="Explain credit card fraud.")
+    max_tokens: int = Field(default=256, ge=16, le=2048)
+    temp: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class LLMGenerationResponse(BaseModel):
+    """Response with generated text."""
+    prompt: str
+    response: str
+
+
+# ---------------------------------------------------------------------------
 # Health Check
 # ---------------------------------------------------------------------------
 

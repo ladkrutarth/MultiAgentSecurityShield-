@@ -19,7 +19,7 @@ class LocalLLM:
         self.model, self.tokenizer = load(self.model_id)
         print("✅ Local MLX LLM loaded successfully.")
 
-    def generate(self, prompt: str, max_tokens: int = 128, temp: float = 0.0) -> str:
+    def generate(self, prompt: str, max_tokens: int = 512, temp: float = 0.0) -> str:
         """Generate response from the local MLX model. Optimized for speed."""
         # Simple Instruct template for Llama-3
         formatted_prompt = f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
@@ -38,8 +38,16 @@ class LocalLLM:
         # Strip Llama-3 special tokens if they leak
         for token in ["<|begin_of_text|>", "<|eot_id|>", "<|start_header_id|>", "<|end_header_id|>", "assistant", "user"]:
             response = response.replace(token, "")
-            
-        return response.strip()
+
+        response = response.strip()
+        
+        # Ensure response ends at the last complete sentence (period)
+        if response and not response.endswith((".", "!", "?")):
+            last_punct = max(response.rfind("."), response.rfind("!"), response.rfind("?"))
+            if last_punct != -1:
+                response = response[:last_punct + 1]
+
+        return response
 
 if __name__ == "__main__":
     # Quick test harness

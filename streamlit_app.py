@@ -4,6 +4,12 @@ AI-Powered Fraud Detection | Dynamic Auth | CFPB Analysis & RAG
 """
 
 import os
+# ---------------------------------------------------------------------------
+# System Stability Guards (Fixes SIGABRT on macOS Sequoia)
+# ---------------------------------------------------------------------------
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+
 import sys
 import re
 from pathlib import Path
@@ -292,10 +298,19 @@ def api_available() -> bool:
         return False
 
 @st.cache_resource
-def get_local_llm():
-    """Lightweight LLM loader for Auth quiz generation only."""
-    from models.local_llm import LocalLLM
-    return LocalLLM()
+def get_llm_via_api(prompt: str, max_tokens: int = 500) -> str:
+    """Calls the backend API for LLM generation to avoid GPU contention in the frontend."""
+    try:
+        resp = requests.post(
+            f"{API_BASE_URL}/api/llm/generate",
+            json={"prompt": prompt, "max_tokens": max_tokens},
+            timeout=60
+        )
+        if resp.status_code == 200:
+            return resp.json().get("response", "Error: No response from API.")
+        return f"Error: API returned {resp.status_code}"
+    except Exception as e:
+        return f"Error connecting to AI Backend: {e}"
 
 # ---------------------------------------------------------------------------
 # Aesthetics & Accessibility Helpers
@@ -497,8 +512,7 @@ D) [Option Text]
 Correct: [Letter]
 [End Question]
 """
-                agent = get_local_llm()
-                raw_q_bulk = agent.generate(prompt, max_tokens=500)
+                raw_q_bulk = get_llm_via_api(prompt)
                 
                 # Resilient bulk parser
                 blocks = re.split(r'\[Question \d\]', raw_q_bulk)
