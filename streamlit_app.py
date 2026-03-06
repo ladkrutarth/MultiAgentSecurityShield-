@@ -820,7 +820,7 @@ def main():
     """, unsafe_allow_html=True)
 
     tabs = st.tabs([
-        "🤖 Omni-Agent AI",
+        "🤖 AI Specialists",
         "📊 Market Dash",
         "🔍 CFPB Market Intel",
         "🧬 Spending DNA",
