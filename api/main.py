@@ -25,8 +25,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from api.schemas import (
-    TransactionInput,
-    FraudPredictionResponse,
     HighRiskTransactionsResponse,
     UserRiskResponse,
     AgentInvestigationRequest,
@@ -38,18 +36,21 @@ from api.schemas import (
     LLMGenerationRequest,
     LLMGenerationResponse,
     HealthResponse,
+    # Feature: Financial Advisor
+    AdvisorChatRequest,
+    AdvisorChatResponse,
+    # Feature: Spending DNA
+    SpendingDNAResponse,
+    DNACompareRequest,
+    DNACompareResponse,
 )
+
 
 # ---------------------------------------------------------------------------
 # Global singletons — loaded once at startup
 # ---------------------------------------------------------------------------
-_model = None
-_encoders = None
 _agent = None
 _rag_engine = None
-
-FEATURES = ["category", "amt", "gender", "state", "merchant", "hour", "day_of_week"]
-CATEGORICAL_COLS = ["category", "gender", "state", "merchant"]
 
 
 @asynccontextmanager
@@ -57,22 +58,7 @@ async def lifespan(app: FastAPI):
     """Load heavy resources once when the server boots.
     GuardAgent (MLX) is skipped at startup to avoid Metal crash when GPU unavailable.
     """
-    global _model, _encoders, _agent, _rag_engine
-
-    import joblib
-
-    model_path = PROJECT_ROOT / "models" / "fraud_model_rf.joblib"
-    enc_path = PROJECT_ROOT / "models" / "encoders.joblib"
-
     print("🚀 Veriscan API — Loading resources...")
-
-    # 1. ML Model
-    if model_path.exists() and enc_path.exists():
-        _model = joblib.load(model_path)
-        _encoders = joblib.load(enc_path)
-        print("✅ Fraud ML model loaded.")
-    else:
-        print("⚠️  ML model files not found — prediction endpoint will be unavailable.")
 
     # 2. RAG Engine (no MLX — safe to load)
     try:
@@ -131,43 +117,12 @@ async def health_check():
         status="operational",
         version="2.0.0",
         services={
-            "ml_model": "loaded" if _model else "unavailable",
             "guard_agent": "loaded" if _agent else "unavailable",
             "rag_engine": "loaded" if _rag_engine else "unavailable",
         },
     )
 
 
-# ---------------------------------------------------------------------------
-# 2. Fraud Prediction (Single Transaction)
-# ---------------------------------------------------------------------------
-@app.post("/api/fraud/predict", response_model=FraudPredictionResponse, tags=["Fraud ML"])
-async def predict_fraud(txn: TransactionInput):
-    """Predict fraud risk for a single transaction using the Random Forest model."""
-    if not _model or not _encoders:
-        raise HTTPException(status_code=503, detail="ML model not loaded.")
-
-    import pandas as pd
-
-    input_dict = txn.model_dump()
-    row = pd.DataFrame([input_dict])
-
-    for col in CATEGORICAL_COLS:
-        try:
-            row[col] = _encoders[col].transform(row[col].astype(str))
-        except ValueError:
-            row[col] = 0  # Unknown category fallback
-
-    prob = float(_model.predict_proba(row[FEATURES])[0][1])
-    risk = "CRITICAL" if prob > 0.8 else "HIGH" if prob > 0.5 else "MEDIUM" if prob > 0.2 else "LOW"
-
-    importances = dict(zip(FEATURES, [float(x) for x in _model.feature_importances_]))
-
-    return FraudPredictionResponse(
-        risk_score=round(prob * 100, 2),
-        risk_level=risk,
-        feature_importances=importances,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -269,3 +224,63 @@ async def generate_text(req: LLMGenerationRequest):
         return LLMGenerationResponse(prompt=req.prompt, response=response)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {e}")
+
+
+# ===========================================================================
+# NEW FEATURE ENDPOINTS
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Feature 1: AI Financial Advisor Chat
+# ---------------------------------------------------------------------------
+@app.post("/api/advisor/chat", response_model=AdvisorChatResponse, tags=["AI Financial Advisor"])
+async def advisor_chat(req: AdvisorChatRequest):
+    """Conversational financial advisor — answers natural-language questions about spending."""
+    from agents.financial_advisor_agent import FinancialAdvisorAgent
+    agent = FinancialAdvisorAgent()
+    result = agent.chat(req.message, req.user_id)
+    return AdvisorChatResponse(
+        user_id=req.user_id,
+        message=req.message,
+        reply=result.get("reply", ""),
+        tool_results=result.get("tool_results", []),
+    )
+
+
+@app.get("/api/advisor/users", tags=["AI Financial Advisor"])
+async def advisor_users():
+    """Return all user IDs in the financial advisor dataset."""
+    from agents.financial_advisor_agent import FinancialAdvisorAgent
+    return {"users": FinancialAdvisorAgent().get_all_users()}
+
+
+# ---------------------------------------------------------------------------
+# Feature 2: Spending DNA
+# ---------------------------------------------------------------------------
+@app.get("/api/dna/profile/{user_id}", response_model=SpendingDNAResponse, tags=["Spending DNA"])
+async def get_dna_profile(user_id: str):
+    """Return the 8-axis Spending DNA radar chart fingerprint for a user."""
+    from agents.spending_dna_agent import SpendingDNAAgent
+    agent = SpendingDNAAgent()
+    result = agent.compute_dna(user_id)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return SpendingDNAResponse(**result)
+
+
+@app.post("/api/dna/compare", response_model=DNACompareResponse, tags=["Spending DNA"])
+async def compare_dna(req: DNACompareRequest):
+    """Compare a new session against the user's DNA baseline."""
+    from agents.spending_dna_agent import SpendingDNAAgent
+    agent = SpendingDNAAgent()
+    result = agent.compare_session(req.user_id, session_overrides=req.session_overrides)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return DNACompareResponse(**result)
+
+
+@app.get("/api/dna/users", tags=["Spending DNA"])
+async def dna_users():
+    """Return all user IDs in the Spending DNA dataset."""
+    from agents.spending_dna_agent import SpendingDNAAgent
+    return {"users": SpendingDNAAgent().get_all_users()}

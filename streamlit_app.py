@@ -31,10 +31,8 @@ API_BASE_URL = os.environ.get("VERISCAN_API_URL", "http://localhost:8000")
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-FEATURES_PATH = PROJECT_ROOT / "dataset" / "csv_data" / "processed_fraud_train.csv"
+FEATURES_PATH = PROJECT_ROOT / "dataset" / "csv_data" / "transactions_3000.csv"
 CFPB_PATH = PROJECT_ROOT / "dataset" / "csv_data" / "cfpb_credit_card.csv"
-MODEL_PATH = PROJECT_ROOT / "models" / "fraud_model_rf.joblib"
-ENCODERS_PATH = PROJECT_ROOT / "models" / "encoders.joblib"
 
 # ---------------------------------------------------------------------------
 # Aesthetics & Accessibility Constants
@@ -272,15 +270,14 @@ import random
 # ---------------------------------------------------------------------------
 # Data & Resource Loading
 # ---------------------------------------------------------------------------
-@st.cache_resource
-def load_fraud_model():
-    if MODEL_PATH.exists() and ENCODERS_PATH.exists():
-        return joblib.load(MODEL_PATH), joblib.load(ENCODERS_PATH)
-    return None, None
 
 @st.cache_data(ttl=600)
 def load_fraud_data():
-    return pd.read_csv(FEATURES_PATH) if FEATURES_PATH.exists() else pd.DataFrame()
+    if FEATURES_PATH.exists():
+        df = pd.read_csv(FEATURES_PATH)
+        df.columns = [c.lower() for c in df.columns]
+        return df
+    return pd.DataFrame()
 
 @st.cache_data(ttl=600)
 def load_cfpb_data():
@@ -371,80 +368,6 @@ def render_dashboard_tab(df):
                      color_continuous_scale='Plasma', template='plotly_white', title="Top 10 High-Risk States")
         st.plotly_chart(apply_accessible_theme(fig), use_container_width=True)
 
-# ---------------------------------------------------------------------------
-# Tab 2: AI Fraud Prediction
-# ---------------------------------------------------------------------------
-def render_prediction_tab(df, model, encoders):
-    if not model:
-        st.error("ML Model files missing. Please run training script first.")
-        return
-
-    st.markdown("### 🚨 AI Risk Assessment")
-    
-    # High-Contrast Selection Controls
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        risk_filter = st.selectbox("Target Risk Level:", ["Show All", "LOW", "MEDIUM", "HIGH", "CRITICAL"])
-    
-    # Efficient Filtering via Batch Inference
-    if risk_filter != "Show All":
-        with st.spinner(f"Scanning sample for {risk_filter} risk cases..."):
-            subset = df.head(5000) # Use top 5000 for consistent responsiveness
-            features = ["category", "amt", "gender", "state", "merchant", "hour", "day_of_week"]
-            X = subset[features].copy()
-            for c in ["category", "gender", "state", "merchant"]:
-                X[c] = encoders[c].transform(X[c].astype(str))
-            
-            probs = model.predict_proba(X)[:, 1]
-            subset['predicted_risk'] = ["CRITICAL" if p > 0.8 else "HIGH" if p > 0.5 else "MEDIUM" if p > 0.2 else "LOW" for p in probs]
-            display_df = subset[subset['predicted_risk'] == risk_filter]
-            
-            if display_df.empty:
-                st.warning(f"No {risk_filter} risk transactions found in the scanned batch. Try another level.")
-                return
-    else:
-        display_df = df
-
-    total_found = len(display_df)
-    st.info(f"Showing {total_found:,} transactions matching criteria.")
-    
-    idx = st.slider("Select Transaction from Pool", 0, max(0, total_found-1), 0)
-    row = display_df.iloc[idx]
-
-    col1, col2 = st.columns([1, 1.2])
-    with col1:
-        st.markdown("<div class='feature-card'>", unsafe_allow_html=True)
-        st.markdown("#### Transaction Details")
-        st.write(f"🏷️ **Merchant**: {row['merchant']}")
-        st.write(f"📁 **Category**: {row['category']}")
-        st.write(f"💰 **Amount**: ${row['amt']:.2f}")
-        st.write(f"👤 **Holder**: {row['first']} {row['last']}")
-        st.write(f"📍 **Location**: {row['state']}")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with col2:
-        features = ["category", "amt", "gender", "state", "merchant", "hour", "day_of_week"]
-        input_row = row[features].copy()
-        for c in ["category", "gender", "state", "merchant"]:
-            input_row[c] = encoders[c].transform([str(input_row[c])])[0]
-        
-        prob = model.predict_proba(pd.DataFrame([input_row]))[0][1]
-        risk = "CRITICAL" if prob > 0.8 else "HIGH" if prob > 0.5 else "MEDIUM" if prob > 0.2 else "LOW"
-
-        st.markdown(f"""
-        <div class='metric-card' style='padding: 3rem;'>
-            <h3 style='font-size: 1.1rem;'>ML Predicted Risk</h3>
-            <div class='value' style='font-size: 5rem; color:{"#dc2626" if prob > 0.5 else "#16a34a"};'>{prob:.1%}</div>
-            <div style='margin-top: 1rem;'>{risk_badge_html(risk)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("#### Model Insights")
-    feat_df = pd.DataFrame({'Feature': features, 'Importance': model.feature_importances_}).sort_values('Importance', ascending=True)
-    fig = px.bar(feat_df, x='Importance', y='Feature', orientation='h', template="plotly_white", 
-                 color='Importance', color_continuous_scale='Turbo', title="ML Feature Contribution Analysis")
-    st.plotly_chart(apply_accessible_theme(fig), use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Tab 3: Dynamic Authentication
@@ -662,6 +585,7 @@ def render_cfpb_tab(df):
                     st.error(f"API Error: {resp.status_code}")
             except requests.ConnectionError:
                 st.error("🔴 Cannot reach API backend. Please start it with: `uvicorn api.main:app --port 8000`")
+                st.error("🔴 Cannot reach API backend. Please start it with: `uvicorn api.main:app --port 8000`")
 
 
 
@@ -702,6 +626,266 @@ def render_agent_tab():
                 st.error("🔴 Cannot reach API backend. Please start it with: `uvicorn api.main:app --port 8000`")
 
 # ---------------------------------------------------------------------------
+# Tab 5: AI Financial Advisor (Enhanced)
+# ---------------------------------------------------------------------------
+def render_advisor_tab():
+    from agents.financial_advisor_agent import FinancialAdvisorAgent
+
+    st.markdown("### 💬 AI Financial Advisor")
+    st.caption("Detects fraud, advises on spending habits (coffee ☕ dining 🍽️ clubs 🎉 gambling 🎲), builds savings plans, and watches for suspicious activity in real time.")
+
+    # ── User selector ──────────────────────────────────────────────────────
+    try:
+        agent = FinancialAdvisorAgent()
+        all_users = agent.get_all_users()
+    except Exception as e:
+        st.error(f"Could not load advisor: {e}")
+        return
+
+    selected_user = st.selectbox("👤 Select User:", all_users[:30], key="adv_user")
+
+    # ── REAL-TIME ALERT BANNER (always shown) ─────────────────────────────
+    try:
+        monitor = agent.tool_suspicious_activity_monitor(selected_user)
+        if monitor["alert_count"] > 0:
+            overall = monitor["overall_status"]
+            alert_html_parts = []
+            for a in monitor["alerts"][:4]:
+                sev_color = {"CRITICAL": "#dc2626", "HIGH": "#ea580c", "MEDIUM": "#d97706"}.get(a["severity"], "#64748b")
+                alert_html_parts.append(
+                    f"<div style='padding:0.5rem 0.75rem; background:rgba(255,255,255,0.6); border-left:4px solid {sev_color}; border-radius:4px; margin-bottom:0.4rem;'>"
+                    f"<strong>{a['emoji']} {a['title']}</strong><br>"
+                    f"<span style='font-size:0.85rem;color:#475569;'>{a['detail']}</span></div>"
+                )
+            alerts_html = "".join(alert_html_parts)
+            background = "linear-gradient(135deg,rgba(220,38,38,0.08),rgba(234,88,12,0.06))"
+            border = "#dc2626" if "CRITICAL" in overall else "#d97706"
+            st.markdown(
+                f"""<div style='background:{background};border:1px solid {border};border-radius:10px;padding:1rem 1.2rem;margin-bottom:1rem;'>
+                <div style='font-weight:700;font-size:1.05rem;margin-bottom:0.6rem;'>🔔 Live Activity Monitor — <span style='color:{border};'>{overall}</span></div>
+                {alerts_html}
+                </div>""",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.success("✅ **Live Monitor:** No suspicious activity detected for this account.", icon="🛡️")
+    except Exception:
+        pass
+
+    st.divider()
+
+    # ── Suggested Questions ────────────────────────────────────────────────
+    st.markdown("#### 💡 Quick Questions")
+    q_cols = st.columns(4)
+    presets = [
+        ("📈 Month vs. Last",       "Am I spending more this month than last?"),
+        ("☕ Coffee habit tips",     "How can I save money on my coffee shop spending?"),
+        ("🎲 Gambling risks",       "What's the impact of my gambling spending? Give me advice."),
+        ("💰 Save money plan",      "How can I save more money based on my spending habits?"),
+        ("🍽️ Dining tips",          "Give me advice on my dining and restaurant spending."),
+        ("🎉 Club / bar advice",    "I spend a lot on clubs and entertainment, how to cut back?"),
+        ("🚨 Check for fraud",      "Are there any suspicious or fraudulent transactions on my account?"),
+        ("📊 Full spending chart",  "Show me a breakdown of my spending by category."),
+    ]
+    for i, (label, question) in enumerate(presets):
+        if q_cols[i % 4].button(label, key=f"adv_preset_{i}"):
+            st.session_state["adv_q"] = question
+
+    # ── Query Input ────────────────────────────────────────────────────────
+    user_q = st.text_input(
+        "Ask anything about your finances:",
+        value=st.session_state.pop("adv_q", ""),
+        placeholder="e.g. 'How do I save $200/month?' or 'Am I being defrauded?'",
+        key="adv_input",
+    )
+
+    if st.button("🧠 Ask Advisor", key="adv_submit", type="primary") and user_q:
+        with st.spinner("Analyzing your financial data…"):
+            result = agent.chat(user_q, selected_user)
+            reply        = result.get("reply", "")
+            tool_results = result.get("tool_results", [])
+            show_chart   = result.get("show_chart", False)
+
+        # ── Reply bubble ─────────────────────────────────────────────────
+        st.markdown(f"""
+        <div class='rag-answer' style='margin:1rem 0;'>
+            <div style='font-size:0.8rem;color:#64748b;margin-bottom:0.5rem;'>🤖 Advisor · {selected_user}</div>
+            {reply.replace(chr(10), "<br>")}
+        </div>""", unsafe_allow_html=True)
+
+        # ── Fraud alert details ───────────────────────────────────────────
+        fraud_result = next((r for r in tool_results if r.get("tool") == "realtime_fraud_check"), None)
+        if fraud_result and fraud_result.get("alerts"):
+            st.markdown("#### 🚨 Fraud Scan Details")
+            for a in fraud_result["alerts"][:6]:
+                sev_color = {"CRITICAL": "#dc2626", "HIGH": "#ea580c", "MEDIUM": "#d97706"}.get(a["severity"], "#64748b")
+                flags_text = "<br>".join(f"&nbsp;&nbsp;• {f}" for f in a["flags"])
+                st.markdown(f"""
+                <div class='feature-card' style='border-left:5px solid {sev_color};margin-bottom:0.6rem;padding:0.8rem 1rem;'>
+                    <div style='display:flex;justify-content:space-between;'>
+                        <strong>{a['merchant']}</strong>
+                        <span style='color:{sev_color};font-weight:700;'>{a['severity']}</span>
+                    </div>
+                    <div style='color:#475569;font-size:0.85rem;'>{a['transaction_date']} · ${a['amount']:.2f} · {a['category']}</div>
+                    <div style='margin-top:0.4rem;font-size:0.85rem;'>{flags_text}</div>
+                </div>""", unsafe_allow_html=True)
+
+        # ── On-demand vertical bar chart ──────────────────────────────────
+        if show_chart:
+            chart_data = agent.get_chart_data(selected_user)
+            if chart_data:
+                st.markdown("#### 📊 Spending by Category")
+                cat_df = pd.DataFrame(list(chart_data.items()), columns=["Category", "Amount ($)"])
+                fig = px.bar(
+                    cat_df, x="Category", y="Amount ($)",
+                    color="Amount ($)", color_continuous_scale="Blues",
+                    template="plotly_white",
+                    title=f"Total Spend per Category — {selected_user}",
+                )
+                fig.update_layout(
+                    xaxis_tickangle=-35,
+                    coloraxis_showscale=False,
+                    margin=dict(t=50, b=60),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(248,250,252,0.9)",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+        # ── Tool call details (collapsed) ─────────────────────────────────
+        with st.expander("🔧 Tool Call Details"):
+            for r in tool_results:
+                st.json(r)
+
+    st.divider()
+
+    # ── Key Metrics (always visible, no chart) ────────────────────────────
+    st.markdown("#### 📋 Account Snapshot")
+    try:
+        summary = agent.tool_spending_summary(selected_user)
+        fraud_check = agent.tool_realtime_fraud_check(selected_user)
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.markdown(f"<div class='metric-card'><h3>Total Spend</h3><div class='value'>${summary.get('total_spend',0):,.0f}</div></div>", unsafe_allow_html=True)
+        m2.markdown(f"<div class='metric-card'><h3>Monthly Avg</h3><div class='value'>${summary.get('avg_monthly_spend',0):,.0f}</div></div>", unsafe_allow_html=True)
+        m3.markdown(f"<div class='metric-card'><h3>Fraud Alerts</h3><div class='value' style='color:{'#dc2626' if fraud_check.get('alerts_found',0) > 0 else '#16a34a'};'>{fraud_check.get('alerts_found',0)}</div></div>", unsafe_allow_html=True)
+        m4.markdown(f"<div class='metric-card'><h3>Archetype</h3><div class='value' style='font-size:1.1rem;'>{str(summary.get('archetype','—')).split('_')[0].title()}</div></div>", unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"Snapshot unavailable: {e}")
+
+
+
+
+# ---------------------------------------------------------------------------
+# Tab 6: Spending DNA — Financial Fingerprint
+# ---------------------------------------------------------------------------
+def render_dna_tab():
+    st.markdown("### 🧬 Spending DNA — Financial Fingerprint")
+    st.info("Every user has a unique 8-axis financial signature. This is used for identity verification and anomaly detection.")
+
+    try:
+        from agents.spending_dna_agent import SpendingDNAAgent
+        dna_agent = SpendingDNAAgent()
+        all_users = dna_agent.get_all_users()
+    except Exception as e:
+        st.error(f"Could not load DNA agent: {e}")
+        return
+
+    col_sel, col_trust = st.columns([2, 1])
+    with col_sel:
+        selected = st.selectbox("Select User for DNA Profile:", all_users[:30], key="dna_user")
+
+    dna = dna_agent.compute_dna(selected)
+    if "error" in dna:
+        st.error(dna["error"])
+        return
+
+    with col_trust:
+        score = dna["avg_trust_score"]
+        color = "#16a34a" if score >= 0.8 else ("#d97706" if score >= 0.6 else "#dc2626")
+        st.markdown(f"""
+        <div class='metric-card' style='margin-top:1.5rem;'>
+            <h3>Trust Score</h3>
+            <div class='value' style='color:{color};'>{score:.0%}</div>
+            <p style='font-size:0.8rem;color:#64748b;'>{dna['trust_grade']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    col_radar, col_stats = st.columns([3, 2])
+    with col_radar:
+        # Radar chart
+        labels = dna["radar_labels"]
+        values = dna["radar_values"]
+        fig = go.Figure()
+        fig.add_trace(go.Scatterpolar(
+            r=values + [values[0]],
+            theta=labels + [labels[0]],
+            fill="toself",
+            fillcolor="rgba(99, 102, 241, 0.25)",
+            line=dict(color="#6366f1", width=3),
+            name=selected,
+        ))
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, 1], tickfont=dict(size=10)),
+                angularaxis=dict(tickfont=dict(size=12, color="#0f172a")),
+                bgcolor="rgba(248,250,252,0.8)",
+            ),
+            showlegend=False,
+            title=dict(text=f"🧬 {selected} — Spending DNA", font=dict(size=16, color="#0f172a")),
+            paper_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=60, r=60, t=60, b=30),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_stats:
+        st.markdown("#### DNA Axes (Raw Values)")
+        raw = dna["raw_axes"]
+        axis_df = pd.DataFrame([
+            {"Axis": label, "Raw Value": round(raw.get(col, 0), 3), "Normalized": round(val, 3)}
+            for (col, label), val in zip(
+                [("avg_txn_amount","Avg Txn Amount"),("location_entropy","Location Entropy"),
+                 ("weekend_ratio","Weekend Ratio"),("category_diversity","Category Diversity"),
+                 ("time_of_day_pref","Time of Day Pref"),("risk_appetite_score","Risk Appetite"),
+                 ("spending_velocity","Spending Velocity"),("merchant_loyalty_score","Merchant Loyalty")],
+                dna["radar_values"]
+            )
+        ])
+        st.dataframe(axis_df, use_container_width=True, hide_index=True)
+
+        st.markdown(f"**Time Preference:** {dna['time_preference']}")
+        st.markdown(f"**Anomalous Sessions:** {dna['anomalous_count']:,} / {dna['total_sessions']:,}")
+
+    # Session comparison
+    st.divider()
+    st.markdown("#### 🔍 Session vs. DNA Comparison")
+    if st.button("Simulate New Session", key="dna_compare"):
+        comparison = dna_agent.compare_session(selected)
+        verdict_color = "#16a34a" if "Trusted" in comparison["verdict"] else ("#d97706" if "Moderate" in comparison["verdict"] else "#dc2626")
+
+        st.markdown(f"<div class='rag-answer' style='border-color:{verdict_color};'><strong>{comparison['verdict']}</strong><br>Session Trust Score: <strong>{comparison['session_trust_score']:.0%}</strong> | Composite Deviation: {comparison['composite_deviation']:.3f}</div>", unsafe_allow_html=True)
+
+        # Overlay radar
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatterpolar(
+            r=comparison["baseline_radar"] + [comparison["baseline_radar"][0]],
+            theta=comparison["radar_labels"] + [comparison["radar_labels"][0]],
+            fill="toself", fillcolor="rgba(99,102,241,0.2)", line=dict(color="#6366f1", width=2, dash="dash"), name="DNA Baseline",
+        ))
+        fig2.add_trace(go.Scatterpolar(
+            r=comparison["session_radar"] + [comparison["session_radar"][0]],
+            theta=comparison["radar_labels"] + [comparison["radar_labels"][0]],
+            fill="toself", fillcolor="rgba(220,38,38,0.15)", line=dict(color="#dc2626", width=3), name="Current Session",
+        ))
+        fig2.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 1]), bgcolor="rgba(248,250,252,0.8)"),
+            showlegend=True, title="Session vs. DNA Baseline",
+            paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=60, r=60, t=50, b=30),
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+
+
+# ---------------------------------------------------------------------------
 # Main Execution
 # ---------------------------------------------------------------------------
 def main():
@@ -710,21 +894,28 @@ def main():
     st.markdown("""
     <div class="main-header">
         <h1>Veriscan Dashboard</h1>
-        <p>Real-time Fraud Prevention & Consumer Compliance Intelligence</p>
+        <p>Real-time Fraud Prevention &amp; Consumer Compliance Intelligence</p>
     </div>
     """, unsafe_allow_html=True)
 
-    tabs = st.tabs(["📊 Market Dash", "🚨 AI Fraud ML", "🔑 Auth Challenges", "🔍 CFPB Market Intel", "🤖 Agentic Analyst"])
-    
+    tabs = st.tabs([
+        "📊 Market Dash",
+        "🔑 Auth Challenges",
+        "🔍 CFPB Market Intel",
+        "🤖 Agentic Analyst",
+        "💬 AI Advisor",
+        "🧬 Spending DNA",
+    ])
+
     fraud_df = load_fraud_data()
-    cfpb_df = load_cfpb_data()
-    model, encoders = load_fraud_model()
+    cfpb_df  = load_cfpb_data()
 
     with tabs[0]: render_dashboard_tab(fraud_df)
-    with tabs[1]: render_prediction_tab(fraud_df, model, encoders)
-    with tabs[2]: render_auth_tab(fraud_df)
-    with tabs[3]: render_cfpb_tab(cfpb_df)
-    with tabs[4]: render_agent_tab()
+    with tabs[1]: render_auth_tab(fraud_df)
+    with tabs[2]: render_cfpb_tab(cfpb_df)
+    with tabs[3]: render_agent_tab()
+    with tabs[4]: render_advisor_tab()
+    with tabs[5]: render_dna_tab()
 
 if __name__ == "__main__":
     main()

@@ -137,3 +137,57 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     services: Dict[str, str]
+
+
+# ---------------------------------------------------------------------------
+# Feature 1: AI Financial Advisor Chat
+# ---------------------------------------------------------------------------
+
+class AdvisorChatRequest(BaseModel):
+    """Request for a natural-language financial question."""
+    user_id: str = Field(..., example="USER_0001")
+    message: str = Field(..., example="Am I spending more this month than last?")
+
+
+class AdvisorChatResponse(BaseModel):
+    """Response from the conversational financial advisor."""
+    user_id: str
+    message: str
+    reply: str
+    tool_results: List[Dict[str, Any]]
+
+
+# ---------------------------------------------------------------------------
+# Feature 2: Spending DNA
+# ---------------------------------------------------------------------------
+
+class SpendingDNAResponse(BaseModel):
+    """The 8-axis radar chart fingerprint for a user."""
+    user_id: str
+    radar_labels: List[str]
+    radar_values: List[float]
+    raw_axes: Dict[str, float]
+    avg_trust_score: float
+    avg_deviation: float
+    anomalous_count: int
+    total_sessions: int
+    trust_grade: str
+    time_preference: str
+
+
+class DNACompareRequest(BaseModel):
+    """Request to compare a session against a user's DNA baseline."""
+    user_id: str = Field(..., example="USER_0001")
+    session_overrides: Optional[Dict[str, float]] = None
+
+
+class DNACompareResponse(BaseModel):
+    """Comparison between the current session and the DNA baseline."""
+    user_id: str
+    baseline_radar: List[float]
+    session_radar: List[float]
+    radar_labels: List[str]
+    axis_deviations: Dict[str, float]
+    composite_deviation: float
+    session_trust_score: float
+    verdict: str

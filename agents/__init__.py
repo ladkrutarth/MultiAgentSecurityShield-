@@ -9,3 +9,4 @@ __all__ = [
     "AgentResult", "BaseAgent", "get_memory",
     "KnowledgeAgent", "RiskScannerAgent", "ProfileAgent", "SynthesisAgent"
 ]
+

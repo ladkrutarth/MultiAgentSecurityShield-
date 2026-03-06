@@ -24,7 +24,14 @@ Veriscan is an end-to-end **Fraud Detection & Security Platform** that processes
 ### 🛡️ What is Veriscan?
 The name **Veriscan** represents the fusion of two core security principles:
 - **VERI** (*Verification & Veracity*): A commitment to absolute identity truth through dynamic authentication and data-backed evidence.
-- **SCAN** (*Scanning & Surveillance*): The power of autonomous agentic "scans" that explore transaction history, risk profiles, and global trends to detect threats in milliseconds.
+- **SCAN** (*Scanning & Surveillance*): The power of autonomous agentic "scans" that explore transaction history, risk profiles, and now personalized financial advice.
+
+### 🌟 Premium AI Features (New)
+The dashboard has been expanded with advanced, real-time AI agents:
+1. **🤖 AI Financial Advisor**: A multi-tool agent for real-time fraud detection, category-specific savings (coffee, dining, clubs, gambling), and personalized savings plans.
+2. **🧬 Spending DNA**: An 8-axis behavioral fingerprinting system for advanced identity verification and trust scoring.
+3. **📊 Real-time Monitoring**: Always-on account surveillance for velocity spikes, late-night clusters, and high-risk merchants.
+
 
 ## Visual Architecture
 
@@ -165,10 +172,12 @@ Veriscan-Dashboard/
 │
 ├── agents/                             # 🤖 Modular Agent System (Clean Architecture)
 │   ├── base.py                         # Standardized Agent Interfaces
-│   ├── memory.py                       # 🧠 Stateful Conversation Memory
+│   ├── financial_advisor_agent.py      # 💬 Enhanced Conversational Advisor
 │   ├── knowledge.py                    # RAG-Powered Knowledge Specialist
-│   ├── scanner.py                      # System-Wide Risk Specialist
+│   ├── memory.py                       # 🧠 Stateful Conversation Memory
 │   ├── profile.py                      # User Investigation Specialist
+│   ├── scanner.py                      # System-Wide Risk Specialist
+│   ├── spending_dna_agent.py           # 🧬 Behavioral Fingerprinting Agent
 │   └── synthesis.py                    # Multi-Tool Reasoning Specialist
 │
 ├── models/                             # Intelligence & Core Logic Layer
@@ -178,8 +187,7 @@ Veriscan-Dashboard/
 │   ├── train_fraud_model.py            # 🚨 ML Training (RF 98%)
 │   └── hash_utils.py                   # Security Utilities
 │
-├── scripts/                            # Data Pipeline
-│   ├── load_kaggle_data.py             # 📦 Kaggle Data Adapter
+├── scripts/                            # Data Pipeline & Synthetic Data
 │   ├── feature_engineering.py          # ⚙️ 19 Health Signals
 │   ├── upload_all_to_snowflake.py      # ☁️ Snowflake Batch Uploader
 │   └── ingest_config.yaml              # 🔧 Connection Config
@@ -255,6 +263,9 @@ graph LR
 | `GET` | `/api/user/{user_id}/risk` | User risk profile |
 | `POST` | `/api/agent/investigate` | Full agentic investigation (Supports `session_id`) |
 | `POST` | `/api/rag/query` | Semantic knowledge search (Multi-stage re-ranking) |
+| `POST` | `/api/advisor/chat` | AI Advisor Chat (Fraud, Categories, Savings) |
+| `GET` | `/api/dna/{user_id}` | Generate Spending DNA 8-axis profile |
+| `POST` | `/api/dna/compare` | Compare current session vs. DNA baseline |
 
 ---
 
