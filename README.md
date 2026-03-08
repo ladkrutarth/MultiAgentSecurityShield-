@@ -39,42 +39,38 @@ The dashboard features a dual-model specialization for mission-critical tasks:
 Veriscan-Cortex is built as a layered, event-driven system. **The Deception Grid (ADDF) wraps the entire system**: every request passes through ADDF first; only then is traffic sent to real services or to the decoy environment.
 
 ```mermaid
-flowchart TB
-    subgraph ADDF["🕵️ ADDF — Adaptive Deception Defense Framework (covers entire system)"]
-        direction TB
-        subgraph Ingress [Ingress Layer]
-            TxnReq[Transaction Request]
-            LoginReq[Login / Session Request]
-            AdvisorReq[Advisor Chat Request]
-            SecurityReq[Security Chat Request]
-            DNAReq[DNA / Risk Requests]
+flowchart LR
+    subgraph ADDF["🕵️ ADDF — Adaptive Deception Defense Framework"]
+        direction LR
+        subgraph Ingress [Ingress]
+            TxnReq[Transaction]
+            LoginReq[Login]
+            AdvisorReq[Advisor]
+            SecurityReq[Security]
+            DNAReq[DNA]
         end
 
-        subgraph Router [Deception Router — single gate for all traffic]
+        subgraph Router [Deception Router]
             RiskEval[Risk Evaluator]
-            SessionState[Session State Store]
             DivertCheck{Divert?}
         end
 
-        subgraph Real [Real Environment — only if not diverted]
+        subgraph Real [Real Environment]
             RealAPI[Real API]
             GuardAgent[🛡️ GuardAgent]
             FinAdvisor[💰 Financial Advisor]
-            DNA[🧬 Spending DNA]
-            RAG[RAG Engine]
+            DNA[🧬 DNA]
+            RAG[RAG]
         end
 
-        subgraph Decoy [Decoy Environment — diverted sessions only]
+        subgraph Decoy [Decoy Environment]
             HoneypotAgent[🕵️ HoneypotAgent]
-            DecoyTxn[Decoy Transactions]
-            DecoyUser[Decoy User Profiles]
-            DecoyFS[Decoy Filesystem]
-            ThreatLog[Threat Intel Log]
+            DecoyTxn[Decoy TXN]
+            ThreatLog[Threat Intel]
         end
 
         Ingress --> RiskEval
-        RiskEval --> SessionState
-        SessionState --> DivertCheck
+        RiskEval --> DivertCheck
         DivertCheck -->|No| RealAPI
         DivertCheck -->|Yes| HoneypotAgent
         RealAPI --> GuardAgent
@@ -82,8 +78,6 @@ flowchart TB
         RealAPI --> DNA
         RealAPI --> RAG
         HoneypotAgent --> DecoyTxn
-        HoneypotAgent --> DecoyUser
-        HoneypotAgent --> DecoyFS
         HoneypotAgent --> ThreatLog
     end
 ```
@@ -122,26 +116,27 @@ flowchart TB
 Veriscan-Cortex works like a professional security team. Instead of one slow AI doing everything, we used **specialized agents** that work together in a split second.
 
 ```mermaid
-graph TD
-    User([User Query]) --> ModelSelector{🔍 Model Selection}
+graph LR
+    User([User Query]) --> ModelSelector{🔍 Model Selector}
     
-    ModelSelector -->|Security Mode| SecAnalyst[🛡️ Security AI Analyst]
-    ModelSelector -->|Financial Mode| FinAdvisor[💰 Financial AI Advisor]
+    ModelSelector -->|Security| SecAnalyst[🛡️ Security Analyst]
+    ModelSelector -->|Financial| FinAdvisor[💰 Financial Advisor]
 
-    subgraph Security_Domain [Security Intelligence]
-        SecAnalyst --> Scanner[🔍 System Scanner]
-        SecAnalyst --> Profile[👤 User Investigator]
-        Scanner --> Shield[🛡️ Shield Monitor]
+    subgraph Security_Domain [Security]
+        direction LR
+        SecAnalyst --> Scanner[🔍 Scanner]
+        SecAnalyst --> Profile[👤 Investigator]
     end
 
-    subgraph Financial_Domain [Advisory Intelligence]
-        FinAdvisor --> Credit[💳 Credit Impact]
-        FinAdvisor --> Savings[💰 Savings Plan]
-        FinAdvisor --> Vector[📈 Vector Analysis]
+    subgraph Financial_Domain [Advisory]
+        direction LR
+        FinAdvisor --> Credit[💳 Credit]
+        FinAdvisor --> Savings[💰 Savings]
+        FinAdvisor --> Analysis[📈 Analysis]
     end
 
-    Security_Domain --> Report[Detailed Security Audit]
-    Financial_Domain --> Report2[300+ Word Advisory Report]
+    Security_Domain --> Report[Security Audit]
+    Financial_Domain --> Report2[Advisory Report]
 ```
 
 #### 🧩 The Roles:
@@ -198,34 +193,30 @@ The scoring engine combines 19 statistical "Heuristic Signals" with a supervised
 
 ```mermaid
 graph LR
-    subgraph Data [Data Ingestion]
+    subgraph Data [Ingestion]
         TXN[(Transactions)]
     end
 
-    subgraph FE [Layer 1: Heuristics & FE]
-        HEU{19 Signals}
-        HEU --> Z[Amount Z-Score]
-        HEU --> V[Velocity 1h/24h/7d]
-        HEU --> E[Location Entropy]
-        HEU --> R[Category Risk]
+    subgraph FE [Heuristics]
+        direction LR
+        Z[Z-Score]
+        V[Velocity]
+        E[Entropy]
     end
 
-    subgraph ML [Layer 2: Core ML]
-        RF[[Random Forest: 98.18% Acc]]
+    subgraph ML [Core ML]
+        RF[[Random Forest]]
     end
 
     subgraph Output [Risk Scoring]
-        SCORE{Final Risk Score}
+        SCORE{Final Score}
     end
 
-    TXN --> HEU
+    TXN --> FE
     Z --> RF
     V --> RF
     E --> RF
-    R --> RF
     RF --> SCORE
-    Z -.->|Override| SCORE
-    E -.->|Override| SCORE
 ```
 
 ---
