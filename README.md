@@ -105,52 +105,6 @@ flowchart TB
 3. **Deception path**: Request → Deception Router → **Diverted** (e.g. first medium+ risk for that session) → HoneypotAgent → Decoy responses + Threat Intel logging. Real agents and data are never used.
 4. **Session persistence**: `session_id` (query/header/body) ties diversion state across all endpoints so a diverted session consistently receives decoy data everywhere.
 
-### End-to-End Process
-
-End-to-end flow from user action in the dashboard to backend processing and response.
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Streamlit as 🖥️ Streamlit (8502)
-    participant FastAPI as ⚡ FastAPI (8000)
-    participant Lifespan as Startup/Lifespan
-    participant Agents as Agents & Models
-
-    User->>Streamlit: Open dashboard / Select mode
-    Streamlit->>FastAPI: GET /api/health
-    FastAPI->>Streamlit: services status (advisor, guard, DNA, ADDF)
-
-    Note over Lifespan: On server start (once)
-    Lifespan->>Agents: Load RAG Engine, GuardAgent, FinancialAdvisor, DNA, ADDF
-    Agents-->>Lifespan: Singletons ready
-
-    alt Financial Advisor
-        User->>Streamlit: Enter message + user_id (Financial mode)
-        Streamlit->>FastAPI: POST /api/advisor/chat { user_id, message }
-        FastAPI->>Agents: FinancialAdvisorAgent.chat(message, user_id)
-        Agents->>Agents: Keyword route → tools (CSV) → compose reply (LLM or template)
-        Agents-->>FastAPI: { reply, tool_results }
-        FastAPI-->>Streamlit: AdvisorChatResponse
-        Streamlit-->>User: Display reply + optional chart
-    else Security Analyst
-        User->>Streamlit: Enter message (Security mode)
-        Streamlit->>FastAPI: POST /api/security/chat { message }
-        FastAPI->>Agents: GuardAgent / tools → synthesis
-        Agents-->>FastAPI: SecurityChatResponse
-        FastAPI-->>Streamlit: reply, actions
-        Streamlit-->>User: Display security report
-    else Fraud / Risk / ADDF
-        User->>Streamlit: View high-risk / user risk / validate txn
-        Streamlit->>FastAPI: GET/POST (high-risk, user risk, validate, decoy)
-        FastAPI->>Agents: Session-aware routing → real or decoy
-        Agents-->>FastAPI: JSON response
-        FastAPI-->>Streamlit: Risk data / decoy data
-        Streamlit-->>User: Tables, charts, status
-    end
-```
-
-**Process summary**
 
 | Step | Layer | What happens |
 |------|--------|----------------|
