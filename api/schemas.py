@@ -177,3 +177,23 @@ class SecurityChatResponse(BaseModel):
     actions: List[AgentActionStep]
     status: str
     session_id: Optional[str] = None
+
+# ---------------------------------------------------------------------------
+# Feature: Proactive Deception Grid (ADDF)
+
+class HoneypotLogEntry(BaseModel):
+    """A log of attacker activity captured in the deception environment."""
+    timestamp: str
+    session_id: str
+    action: str
+    details: Any
+    honeypot_signal: str
+
+
+class DeceptionStatus(BaseModel):
+    """Current state of the Deception Grid for a given session."""
+    is_diverted: bool
+    risk_score: float
+    decoy_type: Optional[str] = None
+    honeypot_logs: List[HoneypotLogEntry] = []
+

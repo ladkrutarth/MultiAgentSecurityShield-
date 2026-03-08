@@ -609,31 +609,6 @@ class FinancialAdvisorAgent:
             "alerts": alerts
         }
 
-    def tool_identify_waste_vectors(self, user_id: str) -> dict[str, Any]:
-        """Flags categories with high frequency (>10 txns/month) and small amounts (<$15)."""
-        user_df = self.df[self.df["user_id"] == user_id]
-        if user_df.empty:
-            return {"error": f"No data for {user_id}"}
-            
-        vectors = []
-        num_months = max(len(user_df["month_key"].unique()), 1)
-        
-        cat_group = user_df.groupby("category")
-        for cat, group in cat_group:
-            avg_txn = group["amount"].mean()
-            freq_monthly = len(group) / num_months
-            if avg_txn < 15 and freq_monthly >= 8: # relaxed condition for visibility
-                vectors.append({
-                    "category": cat,
-                    "avg_amount": round(avg_txn, 2),
-                    "monthly_frequency": round(freq_monthly, 1),
-                    "monthly_waste": round(avg_txn * freq_monthly, 2)
-                })
-        
-        return {
-            "tool": "identify_waste_vectors",
-            "vectors": sorted(vectors, key=lambda x: x["monthly_waste"], reverse=True)
-        }
 
     def tool_tax_deductible_finder(self, user_id: str) -> dict[str, Any]:
         """Flags potential tax-deductible expenses like Healthcare, Charity, or Business travel."""
@@ -764,8 +739,6 @@ class FinancialAdvisorAgent:
             results.append(self.tool_cash_flow_forecast(user_id))
         if any(k in msg for k in ["hike", "price"]):
             results.append(self.tool_detect_price_hikes(user_id))
-        if any(k in msg for k in ["waste vector", "micro", "leak"]):
-            results.append(self.tool_identify_waste_vectors(user_id))
         if any(k in msg for k in ["tax", "deduction", "deductible", "business", "write-off"]):
             results.append(self.tool_tax_deductible_finder(user_id))
         if any(k in msg for k in ["surplus", "optimize"]):
@@ -944,12 +917,6 @@ class FinancialAdvisorAgent:
                 else:
                     parts.append("**✅ No Price Hikes Detected**\n\nAll of your recurring subscriptions have remained stable.")
 
-            elif tool == "identify_waste_vectors":
-                if r['vectors']:
-                    vecs = "\n".join(f"  - **{v['category']}**: {v['monthly_frequency']:.0f} txns/mo avg ➡️ wasting ~${v['monthly_waste']:.2f}/mo" for v in r['vectors'][:4])
-                    parts.append(f"**🗑️ Waste Vector Analysis**\n\nHigh-frequency, low-amount transaction leaks identified:\n\n{vecs}")
-                else:
-                    parts.append("**✅ No Waste Vectors**\n\nYour spending frequency is highly optimized.")
 
             elif tool == "tax_deductible_finder":
                 if r['breakdown']:

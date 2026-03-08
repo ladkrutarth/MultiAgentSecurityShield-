@@ -553,10 +553,9 @@ def render_omni_tab():
         qa6.button("🧾 Tax-Deductible Finder", on_click=set_preset, args=("Find potential tax-deductible expenses.",), use_container_width=True, key="fin_qa6")
         
         # Optimization
-        qa7, qa8, qa9 = st.columns(3)
-        qa7.button("🗑️ Waste Vectors", on_click=set_preset, args=("Identify micro-transaction waste vectors.",), use_container_width=True, key="fin_qa7")
-        qa8.button("📈 Surplus Optimizer", on_click=set_preset, args=("Optimize my monthly surplus.",), use_container_width=True, key="fin_qa8")
-        qa9.button("💧 Liquidity Guard", on_click=set_preset, args=("Check my upcoming bills vs assumed balance.",), use_container_width=True, key="fin_qa9")
+        qa7, qa8 = st.columns(2)
+        qa7.button("📈 Surplus Optimizer", on_click=set_preset, args=("Optimize my monthly surplus.",), use_container_width=True, key="fin_qa7")
+        qa8.button("💧 Liquidity Guard", on_click=set_preset, args=("Check my upcoming bills vs assumed balance.",), use_container_width=True, key="fin_qa8")
         
         placeholder = "e.g. 'How much did I spend on coffee this month, and how can I save?'"
 
@@ -627,16 +626,15 @@ def render_omni_tab():
     
     if is_financial_model:
         st.info("Visualizing deep financial diagnostics.")
-        # ── Vector Analysis: Instant local chart ──────────────────────────────
-        if st.button("📉 Compute Vector Analysis", use_container_width=True):
-            with st.spinner("Computing spending vectors..."):
+        
+        # ── Spending Analysis: Local chart prompt ────────────────────────────
+        if st.button("📊 View Category Breakdown", use_container_width=True):
+            with st.spinner("Analyzing spending categories..."):
                 try:
                     adv_local = FinancialAdvisorAgent()
                     chart_data = adv_local.get_chart_data(selected_user)
-                    summary = adv_local.tool_spending_summary(selected_user)
-    
                     if chart_data:
-                        st.markdown("#### 📊 Spending Vector Analysis")
+                        st.markdown("#### 📊 Spending Category Breakdown")
                         fig = px.bar(
                             x=list(chart_data.keys()),
                             y=list(chart_data.values()),
@@ -657,16 +655,21 @@ def render_omni_tab():
                         fig.update_yaxes(title_font=dict(color="#000000"), tickfont=dict(color="#000000"))
                         fig.update_traces(textposition='outside', cliponaxis=False, textfont=dict(color="#000000"))
                         st.plotly_chart(fig, use_container_width=True)
-    
-                        # Quick summary metrics - Force Black Text
-                        c1, c2, c3 = st.columns(3)
-                        c1.markdown(f"<div style='color: black; font-size: 0.9em; opacity: 0.8;'>💰 Total Spend</div><div style='color: black; font-size: 1.8em; font-weight: bold;'>${summary.get('total_spend', 0):,.2f}</div>", unsafe_allow_html=True)
-                        c2.markdown(f"<div style='color: black; font-size: 0.9em; opacity: 0.8;'>📅 Monthly Avg</div><div style='color: black; font-size: 1.8em; font-weight: bold;'>${summary.get('avg_monthly_spend', 0):,.2f}</div>", unsafe_allow_html=True)
-                        c3.markdown(f"<div style='color: black; font-size: 0.9em; opacity: 0.8;'>🏷️ Top Merchant</div><div style='color: black; font-size: 1.8em; font-weight: bold;'>{summary.get('top_merchant', 'N/A')}</div>", unsafe_allow_html=True)
                     else:
                         st.warning("No spending data found for this user.")
                 except Exception as e:
-                    st.error(f"Vector Analysis Error: {e}")
+                    st.error(f"Analysis Error: {e}")
+
+        # Summary Metrics - Force Black Text
+        try:
+            adv_local = FinancialAdvisorAgent()
+            summary = adv_local.tool_spending_summary(selected_user)
+            c1, c2, c3 = st.columns(3)
+            c1.markdown(f"<div style='color: black; font-size: 0.9em; opacity: 0.8;'>💰 Total Spend</div><div style='color: black; font-size: 1.8em; font-weight: bold;'>${summary.get('total_spend', 0):,.2f}</div>", unsafe_allow_html=True)
+            c2.markdown(f"<div style='color: black; font-size: 0.9em; opacity: 0.8;'>📅 Monthly Avg</div><div style='color: black; font-size: 1.8em; font-weight: bold;'>${summary.get('avg_monthly_spend', 0):,.2f}</div>", unsafe_allow_html=True)
+            c3.markdown(f"<div style='color: black; font-size: 0.9em; opacity: 0.8;'>🏷️ Top Merchant</div><div style='color: black; font-size: 1.8em; font-weight: bold;'>{summary.get('top_merchant', 'N/A')}</div>", unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Summary Error: {e}")
     else:
         st.info("Running localized security sweeps.")
         # ── Anomaly Protocol: Instant local fraud scan ────────────────────────
