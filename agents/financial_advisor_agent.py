@@ -5,6 +5,7 @@ Supports: fraud detection, category advice, savings plan, spending chart, suspic
 
 from pathlib import Path
 from typing import Any
+import os
 import re
 import pandas as pd
 import numpy as np
@@ -111,8 +112,9 @@ SUSPICIOUS_MERCHANTS  = {"cash advance", "western union", "wire", "pawn", "payda
 class FinancialAdvisorAgent:
     """Conversational agent that answers spending questions via tool calls."""
 
-    def __init__(self):
+    def __init__(self, llm=None):
         self._df: pd.DataFrame | None = None
+        self.llm = llm  # Optional; shared with GuardAgent for smart-path synthesis
 
     @property
     def df(self) -> pd.DataFrame:
@@ -683,8 +685,19 @@ class FinancialAdvisorAgent:
         "summary", "overview", "what am i", "total",
     ]
 
+    def _multi_agent_enabled(self) -> bool:
+        """True when ENABLE_MULTI_AGENT_ADVISOR is set (e.g. 1, true, yes)."""
+        v = os.environ.get("ENABLE_MULTI_AGENT_ADVISOR", "").strip().lower()
+        return v in ("1", "true", "yes")
+
     def chat(self, message: str, user_id: str) -> dict[str, Any]:
-        """Route a natural-language question to the right tool(s)."""
+        """Route a natural-language question to the right tool(s). Multi-agent path when ENABLE_MULTI_AGENT_ADVISOR is set."""
+        if self._multi_agent_enabled():
+            from agents.financial_orchestrator import FinancialOrchestrator
+            if not hasattr(self, "_orchestrator"):
+                self._orchestrator = FinancialOrchestrator()
+            return self._orchestrator.chat(message, user_id)
+
         msg = message.lower()
         results: list[dict] = []
         show_chart = any(k in msg for k in self._CHART_KEYWORDS)
@@ -760,7 +773,16 @@ class FinancialAdvisorAgent:
         }
 
     def _compose_reply(self, question: str, tool_results: list[dict]) -> str:
-        """Compose a detailed, professional reply."""
+        """Compose a detailed, professional reply. Uses LLM when available, else templates."""
+        if self.llm and hasattr(self.llm, "generate"):
+            try:
+                context = "\n".join(str(r) for r in tool_results[:6])
+                prompt = f"User asked: {question}\n\nData:\n{context}\n\nGive a short, professional reply in 2-4 bullet points. Use the numbers from the data."
+                out = self.llm.generate(prompt, max_tokens=280, temp=0.3)
+                if out and out.strip():
+                    return out.strip()
+            except Exception:
+                pass
         parts = []
         MAX_SECTIONS = 4  # Allow full detailed reports
 

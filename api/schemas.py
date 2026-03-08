@@ -80,6 +80,7 @@ class RAGQueryRequest(BaseModel):
     """Request for a RAG semantic search."""
     query: str = Field(..., example="identity theft")
     n_results: int = Field(default=5, ge=1, le=20)
+    session_id: Optional[str] = None
 
 
 class RAGResult(BaseModel):
@@ -117,6 +118,7 @@ class AdvisorChatRequest(BaseModel):
     """Request for a natural-language financial question."""
     user_id: str = Field(..., example="USER_0001")
     message: str = Field(..., example="Am I spending more this month than last?")
+    session_id: Optional[str] = None
 
 
 class AdvisorChatResponse(BaseModel):
@@ -149,6 +151,7 @@ class DNACompareRequest(BaseModel):
     """Request to compare a session against a user's DNA baseline."""
     user_id: str = Field(..., example="USER_0001")
     session_overrides: Optional[Dict[str, float]] = None
+    session_id: Optional[str] = None
 
 
 class DNACompareResponse(BaseModel):

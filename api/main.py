@@ -54,6 +54,7 @@ from api.schemas import (
 _agent = None
 _rag_engine = None
 _advisor_agent = None
+_advisor_load_error: Optional[str] = None  # Captured when advisor fails to load
 _dna_agent = None
 _router = None
 _honeypot = None
@@ -72,7 +73,7 @@ async def lifespan(app: FastAPI):
     """Load heavy resources once when the server boots.
     Agents are loaded as singletons to avoid redundant data reloading.
     """
-    global _agent, _rag_engine, _advisor_agent, _dna_agent, _router, _honeypot
+    global _agent, _rag_engine, _advisor_agent, _advisor_load_error, _dna_agent, _router, _honeypot
     print("🚀 Veriscan API — Loading resources...")
 
     # 1. RAG Engine
@@ -92,14 +93,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"ℹ️  GuardAgent not loaded: {e}")
 
-    # 3. Financial Advisor Agent (CSV-heavy)
+    # 3. Financial Advisor Agent (fast path + smart path)
     try:
         from agents.financial_advisor_agent import FinancialAdvisorAgent
-        _advisor_agent = FinancialAdvisorAgent()
-        # Trigger lazy data loading at startup
+        _advisor_agent = FinancialAdvisorAgent(llm=getattr(_agent, "llm", None) if _agent else None)
         _ = _advisor_agent.df
-        print("✅ Financial Advisor Agent loaded.")
+        _advisor_load_error = None
+        print("✅ Financial Advisor Agent loaded (fast+smart path).")
     except Exception as e:
+        _advisor_load_error = str(e)
+        _advisor_agent = None
         print(f"⚠️  Financial Advisor failed: {e}")
 
     # 4. Spending DNA Agent
@@ -157,7 +160,7 @@ async def health_check():
         services={
             "guard_agent": "loaded" if _agent else "unavailable",
             "rag_engine": "loaded" if _rag_engine else "unavailable",
-            "advisor_agent": "loaded" if _advisor_agent else "unavailable",
+            "advisor_agent": "loaded" if _advisor_agent else (f"unavailable: {_advisor_load_error}" if _advisor_load_error else "unavailable"),
             "dna_agent": "loaded" if _dna_agent else "unavailable",
             "addf": "loaded" if _router and _honeypot else "unavailable",
         },
@@ -201,25 +204,22 @@ async def get_user_risk(user_id: str, request: Request, session_id: Optional[str
 
 
 # ---------------------------------------------------------------------------
-# 6. RAG Query
+# 6. RAG Query (ADDF: diverted → decoy)
 # ---------------------------------------------------------------------------
 @app.post("/api/rag/query", response_model=RAGQueryResponse, tags=["Knowledge Base"])
-async def rag_query(req: RAGQueryRequest):
-    """Perform a semantic search over the local knowledge base."""
+async def rag_query(req: RAGQueryRequest, request: Request):
+    """Semantic search over the knowledge base. Diverted sessions get decoy results (ADDF covers entire system)."""
+    sid = req.session_id or _session_id(request)
+    if _router and _honeypot and sid and _router.is_diverted(sid):
+        _honeypot.log_interaction(sid, "DECOY_RAG_QUERY", {"query": (req.query or "")[:200]}, risk_score=0)
+        return RAGQueryResponse(query=req.query, count=0, results=[])
     if not _rag_engine:
         raise HTTPException(status_code=503, detail="RAG engine not loaded.")
-
     results = _rag_engine.query(req.query, n_results=req.n_results)
-
     parsed = [
-        RAGResult(
-            text=r["text"],
-            confidence=r["confidence"],
-            metadata=r.get("metadata"),
-        )
+        RAGResult(text=r["text"], confidence=r["confidence"], metadata=r.get("metadata"))
         for r in results
     ]
-
     return RAGQueryResponse(query=req.query, count=len(parsed), results=parsed)
 
 
@@ -298,14 +298,20 @@ async def deception_status(request: Request, session_id: Optional[str] = Query(N
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
-# Feature 1: AI Financial Advisor Chat
+# Feature 1: AI Financial Advisor Chat (ADDF: diverted → decoy)
 # ---------------------------------------------------------------------------
 @app.post("/api/advisor/chat", response_model=AdvisorChatResponse, tags=["AI Financial Advisor"])
-async def advisor_chat(req: AdvisorChatRequest):
-    """Conversational financial advisor — answers natural-language questions about spending."""
+async def advisor_chat(req: AdvisorChatRequest, request: Request):
+    """Fast path or smart path financial advice. Diverted sessions get decoy reply (ADDF covers entire system)."""
+    sid = req.session_id or _session_id(request)
+    if _router and _honeypot and sid and _router.is_diverted(sid):
+        _honeypot.log_interaction(sid, "DECOY_ADVISOR_CHAT", {"message": (req.message or "")[:200], "user_id": req.user_id}, risk_score=0)
+        decoy_reply = await anyio.to_thread.run_sync(_honeypot.get_deception_advisor_reply, req.message, req.user_id)
+        return AdvisorChatResponse(user_id=req.user_id, message=req.message, reply=decoy_reply, tool_results=[])
     if not _advisor_agent:
-        raise HTTPException(status_code=503, detail="Financial Advisor not loaded.")
-    result = _advisor_agent.chat(req.message, req.user_id)
+        detail = f"Financial Advisor not loaded: {_advisor_load_error}" if _advisor_load_error else "Financial Advisor not loaded."
+        raise HTTPException(status_code=503, detail=detail)
+    result = await anyio.to_thread.run_sync(_advisor_agent.chat, req.message, req.user_id)
     return AdvisorChatResponse(
         user_id=req.user_id,
         message=req.message,
@@ -315,10 +321,15 @@ async def advisor_chat(req: AdvisorChatRequest):
 
 
 @app.get("/api/advisor/users", tags=["AI Financial Advisor"])
-async def advisor_users():
-    """Return all user IDs in the financial advisor dataset."""
+async def advisor_users(request: Request, session_id: Optional[str] = Query(None)):
+    """Return all user IDs in the financial advisor dataset. Diverted sessions get decoy list (ADDF)."""
+    sid = _session_id(request, session_id)
+    if _router and _honeypot and sid and _router.is_diverted(sid):
+        _honeypot.log_interaction(sid, "DECOY_ADVISOR_USERS", {}, risk_score=0)
+        return {"users": [f"DECOY_USER_{i:04d}" for i in range(1, 6)]}
     if not _advisor_agent:
-        raise HTTPException(status_code=503, detail="Financial Advisor not loaded.")
+        detail = f"Financial Advisor not loaded: {_advisor_load_error}" if _advisor_load_error else "Financial Advisor not loaded."
+        raise HTTPException(status_code=503, detail=detail)
     return {"users": _advisor_agent.get_all_users()}
 
 
@@ -362,11 +373,16 @@ async def security_chat(req: SecurityChatRequest):
 
 
 # ---------------------------------------------------------------------------
-# Feature 3: Spending DNA
+# Feature 3: Spending DNA (ADDF: diverted → decoy)
 # ---------------------------------------------------------------------------
 @app.get("/api/dna/profile/{user_id}", response_model=SpendingDNAResponse, tags=["Spending DNA"])
-async def get_dna_profile(user_id: str):
-    """Return the 8-axis Spending DNA radar chart fingerprint for a user."""
+async def get_dna_profile(user_id: str, request: Request, session_id: Optional[str] = Query(None)):
+    """8-axis Spending DNA for a user. Diverted sessions get decoy profile (ADDF covers entire system)."""
+    sid = _session_id(request, session_id)
+    if _router and _honeypot and sid and _router.is_diverted(sid):
+        _honeypot.log_interaction(sid, "DECOY_DNA_PROFILE", {"user_id": user_id}, risk_score=0)
+        decoy = _honeypot.generate_decoy_dna_profile(user_id)
+        return SpendingDNAResponse(**decoy)
     if not _dna_agent:
         raise HTTPException(status_code=503, detail="DNA Agent not loaded.")
     result = _dna_agent.compute_dna(user_id)
@@ -377,7 +393,12 @@ async def get_dna_profile(user_id: str):
 
 @app.post("/api/dna/compare", response_model=DNACompareResponse, tags=["Spending DNA"])
 async def compare_dna(req: DNACompareRequest):
-    """Compare a new session against the user's DNA baseline."""
+    """Compare session vs. DNA baseline. Diverted sessions get decoy comparison (ADDF covers entire system)."""
+    sid = req.session_id
+    if _router and _honeypot and sid and _router.is_diverted(sid):
+        _honeypot.log_interaction(sid, "DECOY_DNA_COMPARE", {"user_id": req.user_id}, risk_score=0)
+        decoy = _honeypot.generate_decoy_dna_compare(req.user_id)
+        return DNACompareResponse(**decoy)
     if not _dna_agent:
         raise HTTPException(status_code=503, detail="DNA Agent not loaded.")
     result = _dna_agent.compare_session(req.user_id, session_overrides=req.session_overrides)

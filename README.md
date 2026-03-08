@@ -31,72 +31,135 @@ The dashboard features a dual-model specialization for mission-critical tasks:
 1. **🛡️ Security AI Analyst**: Dedicated to real-time fraud detection, system shield monitoring, and anomaly detection protocols.
 2. **💰 Financial AI Advisor**: A high-fidelity agent that provides comprehensive (>300 word) advisory reports on credit health, savings plans, and spending optimization.
 3. **🧬 Spending DNA**: An 8-axis behavioral fingerprinting system for advanced identity verification and trust scoring.
-4. **🕵️ Proactive Deception Grid (ADDF)**: Adaptive Deception Defense Framework — risk-based routing diverts suspicious sessions to decoy environments; uses a fast, separate AI model (or template-only) for security responses.
+4. **🕵️ Proactive Deception Grid (ADDF)**: Adaptive Deception Defense Framework **covers the entire system**. All traffic passes through ADDF; risk-based routing diverts suspicious sessions to decoy environments (real agents/data never touched). Uses a fast, separate AI model (or template-only) for decoy responses.
 
 
 ## System Architecture
 
-Veriscan-Cortex is built as a layered, event-driven system with clear separation between ingestion, intelligence, and presentation.
+Veriscan-Cortex is built as a layered, event-driven system. **The Deception Grid (ADDF) wraps the entire system**: every request passes through ADDF first; only then is traffic sent to real services or to the decoy environment.
 
 ```mermaid
 flowchart TB
-    subgraph Ingress [Ingress Layer]
-        TxnReq[Transaction Request]
-        LoginReq[Login / Session Request]
-        ChatReq[Security Chat Request]
-    end
+    subgraph ADDF["🕵️ ADDF — Adaptive Deception Defense Framework (covers entire system)"]
+        direction TB
+        subgraph Ingress [Ingress Layer]
+            TxnReq[Transaction Request]
+            LoginReq[Login / Session Request]
+            AdvisorReq[Advisor Chat Request]
+            SecurityReq[Security Chat Request]
+            DNAReq[DNA / Risk Requests]
+        end
 
-    subgraph Router [Deception Router]
-        RiskEval[Risk Evaluator]
-        SessionState[Session State Store]
-        DivertCheck{Divert?}
-    end
+        subgraph Router [Deception Router — single gate for all traffic]
+            RiskEval[Risk Evaluator]
+            SessionState[Session State Store]
+            DivertCheck{Divert?}
+        end
 
-    subgraph Real [Real Environment]
-        RealAPI[Real API Responses]
-        GuardAgent[🛡️ GuardAgent]
-        FinAdvisor[💰 Financial Advisor]
-        DNA[🧬 Spending DNA]
-    end
+        subgraph Real [Real Environment — only if not diverted]
+            RealAPI[Real API]
+            GuardAgent[🛡️ GuardAgent]
+            FinAdvisor[💰 Financial Advisor]
+            DNA[🧬 Spending DNA]
+            RAG[RAG Engine]
+        end
 
-    subgraph Decoy [Deception Grid - ADDF]
-        HoneypotAgent[🕵️ HoneypotAgent]
-        DecoyTxn[Decoy Transactions]
-        DecoyUser[Decoy User Profiles]
-        DecoyFS[Decoy Filesystem]
-        ThreatLog[Threat Intel Log]
-    end
+        subgraph Decoy [Decoy Environment — diverted sessions only]
+            HoneypotAgent[🕵️ HoneypotAgent]
+            DecoyTxn[Decoy Transactions]
+            DecoyUser[Decoy User Profiles]
+            DecoyFS[Decoy Filesystem]
+            ThreatLog[Threat Intel Log]
+        end
 
-    TxnReq --> RiskEval
-    LoginReq --> RiskEval
-    ChatReq --> RiskEval
-    RiskEval --> SessionState
-    SessionState --> DivertCheck
-    DivertCheck -->|No| RealAPI
-    DivertCheck -->|Yes| HoneypotAgent
-    HoneypotAgent --> DecoyTxn
-    HoneypotAgent --> DecoyUser
-    HoneypotAgent --> DecoyFS
-    HoneypotAgent --> ThreatLog
-    RealAPI --> GuardAgent
-    RealAPI --> FinAdvisor
-    RealAPI --> DNA
+        Ingress --> RiskEval
+        RiskEval --> SessionState
+        SessionState --> DivertCheck
+        DivertCheck -->|No| RealAPI
+        DivertCheck -->|Yes| HoneypotAgent
+        RealAPI --> GuardAgent
+        RealAPI --> FinAdvisor
+        RealAPI --> DNA
+        RealAPI --> RAG
+        HoneypotAgent --> DecoyTxn
+        HoneypotAgent --> DecoyUser
+        HoneypotAgent --> DecoyFS
+        HoneypotAgent --> ThreatLog
+    end
 ```
 
 ### Architecture Layers
 
 | Layer | Components | Responsibility |
 |-------|------------|----------------|
-| **Ingress** | Transaction, Login, Chat requests | Entry points for all user and system interactions |
-| **Deception Router** | Risk Evaluator, Session Store, Divert Check | Risk-based routing; MEDIUM/HIGH risk (score > 20) triggers diversion to decoy |
-| **Real Environment** | GuardAgent, Financial Advisor, Spending DNA, RAG | Production AI agents and data services |
-| **Deception Grid (ADDF)** | HoneypotAgent, Decoy data, Threat Intel | Isolated decoy environment for suspicious sessions; tactic classification, FaaS detection |
+| **ADDF (entire system)** | Ingress + Deception Router + Real + Decoy | **Wraps all traffic.** Every request is evaluated by the router; diverted sessions never touch real data. |
+| **Ingress** | Transaction, Login, Advisor, Security, DNA requests | All entry points into the system (inside ADDF). |
+| **Deception Router** | Risk Evaluator, Session Store, Divert? | Single gate: session risk (e.g. score > 20) → divert to decoy; else → real APIs. |
+| **Real Environment** | GuardAgent, Financial Advisor, Spending DNA, RAG | Production agents and data; only reached when session is not diverted. |
+| **Decoy (inside ADDF)** | HoneypotAgent, Decoy data, Threat Intel | Isolated responses for diverted sessions; tactic classification, FaaS detection, logging. |
 
 ### Data Flow
 
-1. **Normal path**: Request → Risk Evaluator → Session not diverted → Real API → Specialized agents (GuardAgent, Advisor, DNA).
-2. **Deception path**: Request → Risk Evaluator → Session diverted (first medium+ risk) → HoneypotAgent → Decoy responses + Threat Intel logging.
-3. **Session persistence**: `session_id` (query/header) ties diversion state across transaction, user-risk, and chat endpoints.
+1. **All traffic inside ADDF**: Every request (transaction, login, advisor chat, security chat, DNA, risk) enters the system through ADDF. There is no path that bypasses the Deception Router.
+2. **Normal path**: Request → Deception Router (Risk Evaluator + Session State) → **Not diverted** → Real API → GuardAgent, Financial Advisor, DNA, RAG.
+3. **Deception path**: Request → Deception Router → **Diverted** (e.g. first medium+ risk for that session) → HoneypotAgent → Decoy responses + Threat Intel logging. Real agents and data are never used.
+4. **Session persistence**: `session_id` (query/header/body) ties diversion state across all endpoints so a diverted session consistently receives decoy data everywhere.
+
+### End-to-End Process
+
+End-to-end flow from user action in the dashboard to backend processing and response.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Streamlit as 🖥️ Streamlit (8502)
+    participant FastAPI as ⚡ FastAPI (8000)
+    participant Lifespan as Startup/Lifespan
+    participant Agents as Agents & Models
+
+    User->>Streamlit: Open dashboard / Select mode
+    Streamlit->>FastAPI: GET /api/health
+    FastAPI->>Streamlit: services status (advisor, guard, DNA, ADDF)
+
+    Note over Lifespan: On server start (once)
+    Lifespan->>Agents: Load RAG Engine, GuardAgent, FinancialAdvisor, DNA, ADDF
+    Agents-->>Lifespan: Singletons ready
+
+    alt Financial Advisor
+        User->>Streamlit: Enter message + user_id (Financial mode)
+        Streamlit->>FastAPI: POST /api/advisor/chat { user_id, message }
+        FastAPI->>Agents: FinancialAdvisorAgent.chat(message, user_id)
+        Agents->>Agents: Keyword route → tools (CSV) → compose reply (LLM or template)
+        Agents-->>FastAPI: { reply, tool_results }
+        FastAPI-->>Streamlit: AdvisorChatResponse
+        Streamlit-->>User: Display reply + optional chart
+    else Security Analyst
+        User->>Streamlit: Enter message (Security mode)
+        Streamlit->>FastAPI: POST /api/security/chat { message }
+        FastAPI->>Agents: GuardAgent / tools → synthesis
+        Agents-->>FastAPI: SecurityChatResponse
+        FastAPI-->>Streamlit: reply, actions
+        Streamlit-->>User: Display security report
+    else Fraud / Risk / ADDF
+        User->>Streamlit: View high-risk / user risk / validate txn
+        Streamlit->>FastAPI: GET/POST (high-risk, user risk, validate, decoy)
+        FastAPI->>Agents: Session-aware routing → real or decoy
+        Agents-->>FastAPI: JSON response
+        FastAPI-->>Streamlit: Risk data / decoy data
+        Streamlit-->>User: Tables, charts, status
+    end
+```
+
+**Process summary**
+
+| Step | Layer | What happens |
+|------|--------|----------------|
+| 1 | **Frontend** | User opens Streamlit (port 8502), chooses Financial / Security / DNA; UI calls `GET /api/health` to show which services are loaded. |
+| 2 | **Startup** | FastAPI lifespan loads once: RAG Engine, GuardAgent (LLM), FinancialAdvisorAgent (optional LLM), Spending DNA Agent, ADDF (DeceptionRouter + HoneypotAgent). |
+| 3 | **Request** | User sends a message or triggers an action; Streamlit sends the matching REST call (e.g. `POST /api/advisor/chat`, `POST /api/security/chat`, `GET /api/fraud/high-risk`). |
+| 4 | **Backend** | API router receives request; session-aware endpoints (fraud, user risk, validate) use `session_id` → Deception Router decides real vs decoy. |
+| 5 | **Agents** | Advisor: keyword routing → CSV tools → `_compose_reply` (LLM if available, else template). Security: GuardAgent tools + synthesis. DNA: 8-axis profile / compare. ADDF: decoy data + threat intel. |
+| 6 | **Response** | FastAPI returns JSON (reply, tool_results, risk data, etc.); Streamlit renders text, charts, and tables to the user. |
 
 
 ## Visual Architecture
@@ -319,15 +382,22 @@ graph LR
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/health` | Health check & loaded services |
+| `GET` | `/api/health` | Health check & loaded services (advisor, guard, DNA, ADDF) |
 | `POST` | `/api/fraud/predict` | Single-transaction fraud prediction |
-| `GET` | `/api/fraud/high-risk?limit=N` | Top N riskiest transactions |
-| `GET` | `/api/user/{user_id}/risk` | User risk profile |
-| `POST` | `/api/agent/investigate` | Full agentic investigation (Supports `session_id`) |
-| `POST` | `/api/rag/query` | Semantic knowledge search (Multi-stage re-ranking) |
-| `POST` | `/api/advisor/chat` | AI Advisor Chat (Fraud, Categories, Savings) |
-| `GET` | `/api/dna/{user_id}` | Generate Spending DNA 8-axis profile |
-| `POST` | `/api/dna/compare` | Compare current session vs. DNA baseline |
+| `GET` | `/api/fraud/high-risk?limit=N` | Top N riskiest transactions (session-aware → decoy if diverted) |
+| `GET` | `/api/user/{user_id}/risk` | User risk profile (session-aware) |
+| `POST` | `/api/rag/query` | Semantic knowledge search (multi-stage re-ranking) |
+| `POST` | `/api/advisor/chat` | Financial Advisor Chat (`user_id`, `message` → reply, tool_results) |
+| `GET` | `/api/advisor/users` | List user IDs in advisor dataset |
+| `POST` | `/api/security/chat` | Security AI Analyst chat (GuardAgent) |
+| `GET` | `/api/dna/profile/{user_id}` | Spending DNA 8-axis profile |
+| `POST` | `/api/dna/compare` | Compare session vs. DNA baseline |
+| `POST` | `/api/transactions/validate` | Validate transaction (ADDF; risk-based diversion) |
+| `GET` | `/api/deception/status?session_id=` | Deception session status (diverted, risk_score) |
+| `GET` | `/api/honeypot/transactions/{user_id}` | Decoy transactions (diverted sessions) |
+| `GET` | `/api/honeypot/filesystem` | Decoy filesystem (diverted sessions) |
+| `GET` | `/api/honeypot/threat-intel` | Threat intel logs |
+| `GET` | `/api/honeypot/logs` | Honeypot activity logs |
 
 ---
 
