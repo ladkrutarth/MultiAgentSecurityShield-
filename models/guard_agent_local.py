@@ -55,15 +55,16 @@ class LocalGuardAgent:
             context = _get_rag().get_context_for_query(question)
             
             prompt = f"""You are an AI Security Analyst. Use the following context to answer the user's question.
-            
+
             Context:
             {context}
-            
+
             Question: {question}
+
+            Answer (keep it concise and to the point):"""
             
-            Answer:"""
-            
-            answer = self.llm.generate(prompt, max_tokens=300)
+            # Lower max_tokens for faster responses; rely on VERISCAN_FAST_MODE for smaller model if desired.
+            answer = self.llm.generate(prompt, max_tokens=140)
             
             return {
                 "answer": answer,

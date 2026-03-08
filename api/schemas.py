@@ -197,3 +197,43 @@ class DeceptionStatus(BaseModel):
     decoy_type: Optional[str] = None
     honeypot_logs: List[HoneypotLogEntry] = []
 
+
+class TransactionValidateRequest(BaseModel):
+    """Transaction validation with optional session for risk-based diversion."""
+    session_id: Optional[str] = None
+    category: str = Field(..., example="shopping_net")
+    amt: float = Field(..., example=499.99)
+    gender: str = Field(..., example="M")
+    state: str = Field(..., example="CA")
+    merchant: str = Field(..., example="Acme Corp")
+    hour: int = Field(..., ge=0, le=23, example=14)
+    day_of_week: int = Field(..., ge=0, le=6, example=3)
+
+
+class TransactionValidateResponse(BaseModel):
+    """Result of transaction validation; may be decoy when diverted."""
+    authorized: bool
+    risk_score: float
+    diverted: bool = False
+    decoy_txn_id: Optional[str] = None
+
+
+class ThreatIntelLogEntry(BaseModel):
+    """Structured threat intel log with tactic and FaaS indicators."""
+    timestamp: str
+    session_id: str
+    action: str
+    details: Any
+    honeypot_signal: str
+    tactic_category: Optional[str] = None
+    faas_indicators: List[str] = []
+    risk_score: float = 0.0
+
+
+class DeceptionSessionStatus(BaseModel):
+    """Session diversion status for API."""
+    is_diverted: bool
+    risk_score: float
+    first_trigger_time: Optional[str] = None
+    first_trigger: Optional[str] = None
+

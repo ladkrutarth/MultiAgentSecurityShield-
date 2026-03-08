@@ -13,6 +13,7 @@ os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
 import sys
 from pathlib import Path
 
+import uuid
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -570,8 +571,9 @@ def render_omni_tab():
         with st.spinner(f"{selected_model.split()[1]} Agent is analyzing..."):
             try:
                 if is_security_model:
-                    # Route to dedicated Security Endpoint
-                    resp = requests.post(f"{API_BASE_URL}/api/security/chat", json={"message": user_q}, timeout=120)
+                    # Route to Security Endpoint with session_id for ADDF diversion state
+                    sid = st.session_state.setdefault("security_session_id", str(uuid.uuid4())[:12])
+                    resp = requests.post(f"{API_BASE_URL}/api/security/chat", json={"message": user_q, "session_id": sid}, timeout=120)
                 else:
                     # Route strictly to Financial Advisor
                     resp = requests.post(f"{API_BASE_URL}/api/advisor/chat", json={"user_id": selected_user, "message": user_q}, timeout=120)

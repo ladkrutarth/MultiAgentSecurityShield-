@@ -31,6 +31,72 @@ The dashboard features a dual-model specialization for mission-critical tasks:
 1. **🛡️ Security AI Analyst**: Dedicated to real-time fraud detection, system shield monitoring, and anomaly detection protocols.
 2. **💰 Financial AI Advisor**: A high-fidelity agent that provides comprehensive (>300 word) advisory reports on credit health, savings plans, and spending optimization.
 3. **🧬 Spending DNA**: An 8-axis behavioral fingerprinting system for advanced identity verification and trust scoring.
+4. **🕵️ Proactive Deception Grid (ADDF)**: Adaptive Deception Defense Framework — risk-based routing diverts suspicious sessions to decoy environments; uses a fast, separate AI model (or template-only) for security responses.
+
+
+## System Architecture
+
+Veriscan-Cortex is built as a layered, event-driven system with clear separation between ingestion, intelligence, and presentation.
+
+```mermaid
+flowchart TB
+    subgraph Ingress [Ingress Layer]
+        TxnReq[Transaction Request]
+        LoginReq[Login / Session Request]
+        ChatReq[Security Chat Request]
+    end
+
+    subgraph Router [Deception Router]
+        RiskEval[Risk Evaluator]
+        SessionState[Session State Store]
+        DivertCheck{Divert?}
+    end
+
+    subgraph Real [Real Environment]
+        RealAPI[Real API Responses]
+        GuardAgent[🛡️ GuardAgent]
+        FinAdvisor[💰 Financial Advisor]
+        DNA[🧬 Spending DNA]
+    end
+
+    subgraph Decoy [Deception Grid - ADDF]
+        HoneypotAgent[🕵️ HoneypotAgent]
+        DecoyTxn[Decoy Transactions]
+        DecoyUser[Decoy User Profiles]
+        DecoyFS[Decoy Filesystem]
+        ThreatLog[Threat Intel Log]
+    end
+
+    TxnReq --> RiskEval
+    LoginReq --> RiskEval
+    ChatReq --> RiskEval
+    RiskEval --> SessionState
+    SessionState --> DivertCheck
+    DivertCheck -->|No| RealAPI
+    DivertCheck -->|Yes| HoneypotAgent
+    HoneypotAgent --> DecoyTxn
+    HoneypotAgent --> DecoyUser
+    HoneypotAgent --> DecoyFS
+    HoneypotAgent --> ThreatLog
+    RealAPI --> GuardAgent
+    RealAPI --> FinAdvisor
+    RealAPI --> DNA
+```
+
+### Architecture Layers
+
+| Layer | Components | Responsibility |
+|-------|------------|----------------|
+| **Ingress** | Transaction, Login, Chat requests | Entry points for all user and system interactions |
+| **Deception Router** | Risk Evaluator, Session Store, Divert Check | Risk-based routing; MEDIUM/HIGH risk (score > 20) triggers diversion to decoy |
+| **Real Environment** | GuardAgent, Financial Advisor, Spending DNA, RAG | Production AI agents and data services |
+| **Deception Grid (ADDF)** | HoneypotAgent, Decoy data, Threat Intel | Isolated decoy environment for suspicious sessions; tactic classification, FaaS detection |
+
+### Data Flow
+
+1. **Normal path**: Request → Risk Evaluator → Session not diverted → Real API → Specialized agents (GuardAgent, Advisor, DNA).
+2. **Deception path**: Request → Risk Evaluator → Session diverted (first medium+ risk) → HoneypotAgent → Decoy responses + Threat Intel logging.
+3. **Session persistence**: `session_id` (query/header) ties diversion state across transaction, user-risk, and chat endpoints.
 
 
 ## Visual Architecture

@@ -63,3 +63,55 @@ def tool_get_high_risk_transactions(limit: int = 10) -> List[Dict]:
         return []
     df = _fraud_df.sort_values("COMBINED_RISK_SCORE", ascending=False).head(limit)
     return df.to_dict("records")
+
+
+# ---------------------------------------------------------------------------
+# Transaction validation (risk score for single txn) — fast path for ADDF
+# ---------------------------------------------------------------------------
+_model_cache = None
+_encoders_cache = None
+
+
+def _load_fraud_model():
+    global _model_cache, _encoders_cache
+    if _model_cache is not None:
+        return _model_cache, _encoders_cache
+    model_path = PROJECT_ROOT / "models" / "fraud_model_rf.joblib"
+    enc_path = PROJECT_ROOT / "models" / "encoders.joblib"
+    if model_path.exists() and enc_path.exists():
+        import joblib
+        _model_cache = joblib.load(model_path)
+        _encoders_cache = joblib.load(enc_path)
+    return _model_cache, _encoders_cache
+
+
+# Heuristic when no trained model: category + amount (fast, no disk)
+_CATEGORY_RISK = {"shopping_net": 0.5, "travel": 0.4, "entertainment": 0.35, "health": 0.3, "transfer": 0.6, "gas_transport": 0.2}
+
+
+def score_transaction(category: str, amt: float, merchant: str, hour: int, day_of_week: int) -> float:
+    """
+    Returns COMBINED_RISK_SCORE (0–100). Uses RF model if available, else fast heuristic.
+    """
+    model, encoders = _load_fraud_model()
+    if model is not None and encoders is not None:
+        try:
+            import numpy as np
+            X = pd.DataFrame([{
+                "category": category, "amt": amt, "gender": "M", "state": "CA",
+                "merchant": merchant or "unknown", "hour": hour, "day_of_week": day_of_week,
+            }])
+            for col in ["category", "gender", "state", "merchant"]:
+                if col in encoders:
+                    X[col] = encoders[col].transform(X[col].astype(str))
+            features = ["category", "amt", "gender", "state", "merchant", "hour", "day_of_week"]
+            X = X[[c for c in features if c in X.columns]]
+            prob = model.predict_proba(X)[0, 1]
+            return float(prob * 100)
+        except Exception:
+            pass
+    # Fast heuristic
+    base = _CATEGORY_RISK.get(category, 0.25)
+    amount_factor = min(1.0, amt / 3000.0) * 0.4
+    fraud_merchant = 0.3 if merchant and "fraud_" in str(merchant).lower() else 0
+    return (base + amount_factor + fraud_merchant) * 100

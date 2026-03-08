@@ -7,13 +7,27 @@ class LocalLLM:
     """
     Wrapper for mlx-lm to provide a simple interface for local LLM generation.
     Highly optimized for Apple Silicon (M1/M2/M3 chips).
+
+    Tuning for speed vs quality:
+    - Default: Llama-3 8B Instruct 4bit (higher quality, slower).
+    - Set VERISCAN_FAST_MODE=1 to use TinyLlama 1.1B Chat (much faster).
+    - Or override explicitly with VERISCAN_LLM_MODEL.
     """
     
     # Default high-quality Llama-3 8B Instruct model for MLX
     MODEL_ID = "mlx-community/Meta-Llama-3-8B-Instruct-4bit"
+    FAST_MODEL_ID = "mlx-community/TinyLlama-1.1B-Chat-v1.0-4bit"
     
     def __init__(self, model_id: str = None):
-        self.model_id = model_id or self.MODEL_ID
+        env_model = os.environ.get("VERISCAN_LLM_MODEL")
+        fast_mode = os.environ.get("VERISCAN_FAST_MODE", "").strip() == "1"
+        if env_model:
+            self.model_id = env_model.strip()
+        elif fast_mode:
+            self.model_id = self.FAST_MODEL_ID
+        else:
+            self.model_id = model_id or self.MODEL_ID
+
         print(f"Loading local MLX model: {self.model_id}...")
         
         # MLX-LM handles downloading and loading automatically
