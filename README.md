@@ -120,33 +120,33 @@ graph LR
     User([User Query]) --> ModelSelector{🔍 Model Selector}
     
     ModelSelector -->|Security| SecAnalyst[🛡️ Security Analyst]
-    ModelSelector -->|Financial| FinAdvisor[💰 Financial Advisor]
+    ModelSelector -->|Financial| FinOrchestrator[💰 Financial Orchestrator]
 
-    subgraph Security_Domain [Security]
+    subgraph Security_Domain [Security Intelligence]
         direction LR
         SecAnalyst --> Scanner[🔍 Scanner]
         SecAnalyst --> Profile[👤 Investigator]
     end
 
-    subgraph Financial_Domain [Advisory]
+    subgraph Financial_Domain [Multi-Agent Advisory]
         direction LR
-        FinAdvisor --> Credit[💳 Credit]
-        FinAdvisor --> Savings[💰 Savings]
-        FinAdvisor --> Analysis[📈 Analysis]
+        FinOrchestrator --> HistAgent[� Historical Review]
+        FinOrchestrator --> CalcAgent[� Math & Calc]
+        FinOrchestrator --> CurrAgent[� Current Analyst]
     end
 
     Security_Domain --> Report[Security Audit]
-    Financial_Domain --> Report2[Advisory Report]
+    Financial_Domain --> Report2[Synthesized Advisory Report]
 ```
 
-#### 🧩 The Roles:
 | Agent | Role | "The Personality" |
 | :--- | :--- | :--- |
-| **Guard (Router)** | The Receptionist | Decides instantly who is best to answer your question. |
+| **Orchestrator** | The Project Manager | Coordinates specialized sub-agents to build a cohesive financial report. |
+| **Historical Review** | The Archivist | Analyzes long-term spending patterns and historical category trends. |
+| **Math & Calculation**| The Accountant | Performs precision math on transaction totals, averages, and deviations. |
+| **Current Analyst** | The Real-Time Monitor | Focuses on the most recent transactions and immediate spending behavior. |
 | **Scanner** | The Watchman | Scans the whole system for high-risk threats in milliseconds. |
 | **Profile** | The Private Eye | Looks deep into a specific user's history and risk scores. |
-| **Knowledge** | The Lawyer | Knows all the CFPB rules and fraud theory by heart. |
-| **Synthesis** | The Chief Analyst | The "Deep Thinker" that combines all data into a final report. |
 
 #### 🔄 The Process:
 1. **Listen:** The **Guard** hears your question.
